@@ -1,62 +1,52 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-import uuid
+from PIL import Image, ImageDraw, ImageFont
+from moviepy.editor import ImageClip, AudioFileClip
 import os
-from PIL import Image
-import wave
+import uuid
 
 app = Flask(__name__)
 CORS(app)
 
-SAVE_DIR = "static"
-os.makedirs(SAVE_DIR, exist_ok=True)
-
-def save_image(prompt):
-    # Generate placeholder image with solid color
-    img = Image.new("RGB", (512, 512), color=(128, 128, 255))
-    filename = f"{uuid.uuid4()}.png"
-    filepath = os.path.join(SAVE_DIR, filename)
-    img.save(filepath)
-    return f"/static/{filename}"
-
-def save_audio(prompt):
-    # Create 1-second silent WAV audio file placeholder
-    filename = f"{uuid.uuid4()}.wav"
-    filepath = os.path.join(SAVE_DIR, filename)
-    with wave.open(filepath, 'w') as f:
-        f.setnchannels(1)        # mono
-        f.setsampwidth(2)        # 2 bytes per sample
-        f.setframerate(44100)    # 44.1kHz sample rate
-        frames = b'\x00\x00' * 44100  # 1 second of silence
-        f.writeframes(frames)
-    return f"/static/{filename}"
-
-def save_video(prompt):
-    # Placeholder video URL (replace later with real AI-generated video)
-    return "https://sample-videos.com/video123/mp4/720/big_buck_bunny_720p_1mb.mp4"
+@app.route("/", methods=["GET"])
+def home():
+    return "✅ AI Media Generator API is running"
 
 @app.route("/generate", methods=["POST"])
-def generate_media():
+def generate():
     data = request.get_json()
-    prompt = data.get("text", None)
+    prompt = data.get("text", "").strip()
 
     if not prompt:
         return jsonify({"error": "Prompt is required"}), 400
 
-    host_url = request.host_url.strip("/")
-    image_url = host_url + save_image(prompt)
-    audio_url = host_url + save_audio(prompt)
-    video_url = save_video(prompt)
+    # Unique ID for filenames
+    uid = str(uuid.uuid4())
+
+    # === 1. Generate image ===
+    img_path = f"static/{uid}_image.png"
+    img = Image.new("RGB", (3840, 2160), color=(30, 30, 30))
+    draw = ImageDraw.Draw(img)
+    font = ImageFont.load_default()
+    draw.text((100, 100), prompt, fill="white", font=font)
+    img.save(img_path)
+
+    # === 2. Generate silent audio (you can use ElevenLabs API here instead) ===
+    audio_path = f"static/{uid}_audio.wav"
+    os.system(f"ffmpeg -f lavfi -i anullsrc=channel_layout=stereo:sample_rate=44100 -t 5 {audio_path}")
+
+    # === 3. Combine image + audio into video ===
+    video_path = f"static/{uid}_final_video.mp4"
+    clip = ImageClip(img_path, duration=5)
+    clip = clip.set_audio(AudioFileClip(audio_path))
+    clip.write_videofile(video_path, fps=24)
 
     return jsonify({
-        "imageURL": image_url,
-        "audioURL": audio_url,
-        "videoURL": video_url
+        "image_url": f"/{img_path}",
+        "audio_url": f"/{audio_path}",
+        "video_url": f"/{video_path}"
     })
 
-@app.route("/")
-def home():
-    return "✅ AI Generator Backend is Running"
-
 if __name__ == "__main__":
+    os.makedirs("static", exist_ok=True)
     app.run(host="0.0.0.0", port=7860)
