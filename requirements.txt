@@ -1,7 +1,6 @@
 Flask
 flask-cors
 moviepy
+imageio[ffmpeg]
 Pillow
-imageio-ffmpeg
-
 
